@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BPB ロードマップジェネレーター</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>BPB ロードマップジェネレーター</h1>
+    <div class="header-right">
+      <div class="round-control">
+        <label for="round-count-input">ラウンド数</label>
+        <input type="number" id="round-count-input" min="1" max="18" value="18" step="1">
+      </div>
+      <div class="header-actions">
+        <button id="btn-share" class="btn">🔗 URLをコピー</button>
+        <button id="btn-export" class="btn btn-primary">⬇ PNG保存</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-body">
+    <aside class="palette-panel">
+      <div class="palette-top">
+        <input id="palette-search" type="text" placeholder="アイテムを検索…" autocomplete="off">
+        <button id="btn-add-custom" class="btn btn-sm">＋ カスタム</button>
+      </div>
+      <ul id="palette-list" class="palette-list"></ul>
+    </aside>
+
+    <div class="canvas-area">
+      <div class="canvas-scroll">
+        <div id="roadmap-canvas" class="roadmap-canvas">
+          <div class="canvas-title" id="canvas-title" contenteditable="true" spellcheck="false">ロードマップ</div>
+          <div id="roadmap-grid" class="roadmap-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
