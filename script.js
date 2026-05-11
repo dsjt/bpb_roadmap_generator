@@ -549,8 +549,9 @@ async function exportPng() {
       scale: 2,
       useCORS: true,
     });
+    const title = (document.getElementById('canvas-title').textContent.trim() || 'roadmap');
     const link = document.createElement('a');
-    link.download = 'roadmap.png';
+    link.download = `${title}_roadmap.png`;
     link.href = result.toDataURL('image/png');
     link.click();
     showToast('PNG を保存しました');
