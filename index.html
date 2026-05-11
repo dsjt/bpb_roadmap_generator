@@ -12,7 +12,7 @@
     <div class="header-right">
       <div class="round-control">
         <label for="round-count-input">ラウンド数</label>
-        <input type="number" id="round-count-input" min="1" max="18" value="18" step="1">
+        <input type="number" id="round-count-input" min="1" max="18" value="10" step="1">
       </div>
       <div class="header-actions">
         <button id="btn-share" class="btn">🔗 URLをコピー</button>
@@ -25,7 +25,10 @@
     <aside class="palette-panel">
       <div class="palette-top">
         <input id="palette-search" type="text" placeholder="アイテムを検索…" autocomplete="off">
-        <button id="btn-add-custom" class="btn btn-sm">＋ カスタム</button>
+        <div class="palette-btns">
+          <button id="btn-add-custom" class="btn btn-sm">＋ カスタム</button>
+          <button id="btn-bulk-upload" class="btn btn-sm">📁 一括</button>
+        </div>
       </div>
       <ul id="palette-list" class="palette-list"></ul>
     </aside>

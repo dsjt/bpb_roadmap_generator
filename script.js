@@ -183,7 +183,7 @@ const PREDEFINED_ITEMS = [
 let state = {
   placements: [],   // [{ instanceId, itemId, col }]
   customItems: [],  // [{ id, name }]
-  roundCount: 18,
+  roundCount: 10,
 };
 
 // ============================================================
@@ -208,7 +208,7 @@ function loadState() {
     const saved = JSON.parse(raw);
     state.placements = saved.placements || [];
     state.customItems = saved.customItems || [];
-    state.roundCount = saved.roundCount || 18;
+    state.roundCount = saved.roundCount || 10;
   } catch (_) {}
 }
 
@@ -243,7 +243,7 @@ function decodeStateFromUrl(encoded) {
       itemId,
       col,
     }));
-    state.roundCount = data.r || 18;
+    state.roundCount = data.r || 10;
   } catch (_) {}
 }
 
@@ -261,6 +261,11 @@ function getAllItems() {
 function getItemById(id) {
   return getAllItems().find(item => item.id === id) || null;
 }
+
+// ============================================================
+// Drag source tracker
+// ============================================================
+let dragSource = null; // { type: 'palette', itemId } | { type: 'cell', instanceId }
 
 // ============================================================
 // Palette rendering
@@ -283,7 +288,7 @@ function renderPalette() {
 
     const imgSrc = getImage(item.id);
     const thumb = imgSrc
-      ? `<img class="palette-thumb" src="${imgSrc}" alt="">`
+      ? `<div class="palette-thumb-wrap"><img class="palette-thumb" src="${imgSrc}" alt=""><button class="palette-img-remove" title="画像を削除" tabindex="-1">×</button></div>`
       : `<div class="palette-avatar">${item.name.charAt(0)}</div>`;
 
     li.innerHTML = `
@@ -293,16 +298,30 @@ function renderPalette() {
     `;
 
     li.addEventListener('dragstart', e => {
+      dragSource = { type: 'palette', itemId: item.id };
       e.dataTransfer.setData('text/plain', item.id);
       e.dataTransfer.effectAllowed = 'copy';
       li.classList.add('dragging');
     });
-    li.addEventListener('dragend', () => li.classList.remove('dragging'));
+    li.addEventListener('dragend', () => {
+      dragSource = null;
+      li.classList.remove('dragging');
+    });
 
     li.querySelector('.palette-upload-btn').addEventListener('click', e => {
       e.stopPropagation();
       triggerImageUpload(item.id);
     });
+
+    const removeBtn = li.querySelector('.palette-img-remove');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        localStorage.removeItem('bpb_img_' + item.id);
+        renderPalette();
+        renderGrid();
+      });
+    }
 
     list.appendChild(li);
   });
@@ -343,7 +362,7 @@ function renderGrid() {
 
     cell.addEventListener('dragover', e => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
+      e.dataTransfer.dropEffect = (dragSource && dragSource.type === 'cell') ? 'move' : 'copy';
       cell.classList.add('drag-over');
     });
     cell.addEventListener('dragleave', e => {
@@ -352,8 +371,11 @@ function renderGrid() {
     cell.addEventListener('drop', e => {
       e.preventDefault();
       cell.classList.remove('drag-over');
-      const itemId = e.dataTransfer.getData('text/plain');
-      if (itemId) addPlacement(itemId, col);
+      if (dragSource && dragSource.type === 'cell') {
+        movePlacement(dragSource.instanceId, col);
+      } else if (dragSource && dragSource.type === 'palette') {
+        addPlacement(dragSource.itemId, col);
+      }
     });
 
     // Render existing placements
@@ -386,6 +408,18 @@ function createItemChip(placement) {
     chip.appendChild(text);
   }
 
+  chip.draggable = true;
+  chip.addEventListener('dragstart', e => {
+    dragSource = { type: 'cell', instanceId: placement.instanceId };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', placement.itemId);
+    chip.classList.add('dragging');
+    e.stopPropagation();
+  });
+  chip.addEventListener('dragend', () => {
+    dragSource = null;
+    chip.classList.remove('dragging');
+  });
   chip.addEventListener('click', () => removePlacement(placement.instanceId));
   return chip;
 }
@@ -403,6 +437,16 @@ function addPlacement(itemId, col) {
   if (cell) cell.appendChild(createItemChip(placement));
 }
 
+function movePlacement(instanceId, newCol) {
+  const pl = state.placements.find(p => p.instanceId === instanceId);
+  if (!pl || pl.col === newCol) return;
+  pl.col = newCol;
+  saveState();
+  const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
+  const newCell = document.querySelector(`.grid-cell[data-col="${newCol}"]`);
+  if (chip && newCell) newCell.appendChild(chip);
+}
+
 function removePlacement(instanceId) {
   state.placements = state.placements.filter(p => p.instanceId !== instanceId);
   saveState();
@@ -413,20 +457,73 @@ function removePlacement(instanceId) {
 // ============================================================
 // Image upload
 // ============================================================
+
+// 画像ファイルを64×64 PNGのdataURLに変換して返す
+function resizeImageFile(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const SIZE = 64;
+        const canvas = document.createElement('canvas');
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext('2d');
+        const scale = Math.min(SIZE / img.width, SIZE / img.height);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        ctx.drawImage(img, (SIZE - w) / 2, (SIZE - h) / 2, w, h);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function triggerImageUpload(itemId) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = e => {
+  input.onchange = async e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      saveImage(itemId, ev.target.result);
-      renderPalette();
-      renderGrid();
-    };
-    reader.readAsDataURL(file);
+    saveImage(itemId, await resizeImageFile(file));
+    renderPalette();
+    renderGrid();
+  };
+  input.click();
+}
+
+function triggerBulkUpload() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.onchange = async e => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    // アイテム名 → item のマップを作成
+    const nameMap = new Map(getAllItems().map(item => [item.name, item]));
+
+    let matched = 0;
+    await Promise.all(files.map(async file => {
+      const name = file.name.replace(/\.[^.]+$/, ''); // 拡張子除去
+      const item = nameMap.get(name);
+      if (!item) return;
+      saveImage(item.id, await resizeImageFile(file));
+      matched++;
+    }));
+
+    renderPalette();
+    renderGrid();
+    const unmatched = files.length - matched;
+    const msg = unmatched > 0
+      ? `${matched}件を紐づけました（${unmatched}件は該当なし）`
+      : `${matched}件を紐づけました`;
+    showToast(msg);
   };
   input.click();
 }
@@ -538,6 +635,8 @@ function init() {
     const name = prompt('カスタムアイテム名を入力してください:');
     if (name && name.trim()) addCustomItem(name.trim());
   });
+
+  document.getElementById('btn-bulk-upload').addEventListener('click', triggerBulkUpload);
 
   // Export buttons
   document.getElementById('btn-export').addEventListener('click', exportPng);
