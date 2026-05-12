@@ -404,14 +404,36 @@ function createRoadmapBlock(roadmap) {
   titleSpan.addEventListener('input', () => { roadmap.label = titleSpan.textContent; saveState(); });
   titleSpan.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); titleSpan.blur(); } });
 
+  const idx = state.roadmaps.indexOf(roadmap);
+
+  const upBtn = document.createElement('button');
+  upBtn.className = 'roadmap-move-btn';
+  upBtn.textContent = '↑';
+  upBtn.title = '上に移動';
+  upBtn.disabled = idx === 0;
+  upBtn.addEventListener('click', e => { e.stopPropagation(); moveRoadmap(roadmap.id, -1); });
+
+  const downBtn = document.createElement('button');
+  downBtn.className = 'roadmap-move-btn';
+  downBtn.textContent = '↓';
+  downBtn.title = '下に移動';
+  downBtn.disabled = idx === state.roadmaps.length - 1;
+  downBtn.addEventListener('click', e => { e.stopPropagation(); moveRoadmap(roadmap.id, 1); });
+
   const delBtn = document.createElement('button');
   delBtn.className = 'roadmap-delete-btn';
   delBtn.textContent = '削除';
   delBtn.disabled = state.roadmaps.length <= 1;
   delBtn.addEventListener('click', e => { e.stopPropagation(); deleteRoadmap(roadmap.id); });
 
+  const btnGroup = document.createElement('div');
+  btnGroup.style.cssText = 'display:flex;gap:4px;flex-shrink:0;';
+  btnGroup.appendChild(upBtn);
+  btnGroup.appendChild(downBtn);
+  btnGroup.appendChild(delBtn);
+
   header.appendChild(titleSpan);
-  header.appendChild(delBtn);
+  header.appendChild(btnGroup);
   block.appendChild(header);
 
   // Grid
@@ -549,6 +571,16 @@ function addRoadmap() {
   const roadmap = { id: 'r_' + uid(), label: `ロードマップ${state.roadmaps.length + 1}`, placements: [] };
   state.roadmaps.push(roadmap);
   state.selectedRoadmapId = roadmap.id;
+  saveState();
+  renderGrid();
+}
+
+function moveRoadmap(id, direction) {
+  const idx = state.roadmaps.findIndex(r => r.id === id);
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= state.roadmaps.length) return;
+  const [rm] = state.roadmaps.splice(idx, 1);
+  state.roadmaps.splice(newIdx, 0, rm);
   saveState();
   renderGrid();
 }

@@ -339,6 +339,21 @@ body {
 .roadmap-delete-btn:hover { color: var(--danger); border-color: var(--danger); }
 .roadmap-delete-btn:disabled { display: none; }
 
+.roadmap-move-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 2px 6px;
+  transition: color 0.1s, border-color 0.1s;
+  white-space: nowrap;
+}
+.roadmap-move-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.roadmap-move-btn:disabled { opacity: 0.25; cursor: default; }
+
 /* ── Roadmap grid ── */
 .roadmap-grid {
   display: grid;
