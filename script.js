@@ -182,7 +182,7 @@ const PREDEFINED_ITEMS = [
 // ============================================================
 let state = {
   roadmaps: [],            // [{ id, label, placements: [{ instanceId, itemId, col }] }]
-  selectedRoadmapId: null,
+  selectedRoadmapIds: [], // 選択中（エクスポート対象）のロードマップID一覧
   customItems: [],
   roundCount: 10,
 };
@@ -191,8 +191,8 @@ function defaultRoadmap() {
   return { id: 'r_' + uid(), label: 'ロードマップ', placements: [] };
 }
 
-function getSelectedRoadmap() {
-  return state.roadmaps.find(r => r.id === state.selectedRoadmapId) || state.roadmaps[0] || null;
+function getSelectedRoadmaps() {
+  return state.roadmaps.filter(r => state.selectedRoadmapIds.includes(r.id));
 }
 
 // ============================================================
@@ -204,7 +204,7 @@ function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       roadmaps: state.roadmaps,
-      selectedRoadmapId: state.selectedRoadmapId,
+      selectedRoadmapIds: state.selectedRoadmapIds,
       customItems: state.customItems,
       roundCount: state.roundCount,
     }));
@@ -222,7 +222,14 @@ function loadState() {
     } else {
       state.roadmaps = saved.roadmaps || [defaultRoadmap()];
     }
-    state.selectedRoadmapId = saved.selectedRoadmapId || state.roadmaps[0].id;
+    // selectedRoadmapId（旧単一）→ selectedRoadmapIds（新複数）へ移行
+    if (saved.selectedRoadmapIds) {
+      state.selectedRoadmapIds = saved.selectedRoadmapIds;
+    } else if (saved.selectedRoadmapId) {
+      state.selectedRoadmapIds = [saved.selectedRoadmapId];
+    } else {
+      state.selectedRoadmapIds = state.roadmaps.map(r => r.id);
+    }
     state.customItems = saved.customItems || [];
     state.roundCount = saved.roundCount || 10;
   } catch (_) {}
@@ -242,10 +249,12 @@ function getImage(itemId) {
 // URL encode / decode
 // ============================================================
 function encodeStateToUrl() {
-  const roadmap = getSelectedRoadmap();
+  const selected = getSelectedRoadmaps();
   const data = {
-    p: roadmap ? roadmap.placements.map(pl => [pl.itemId, pl.col]) : [],
-    l: roadmap ? roadmap.label : 'ロードマップ',
+    roadmaps: selected.map(rm => ({
+      p: rm.placements.map(pl => [pl.itemId, pl.col]),
+      l: rm.label,
+    })),
     c: state.customItems.map(ci => [ci.id, ci.name]),
     r: state.roundCount,
   };
@@ -257,13 +266,22 @@ function decodeStateFromUrl(encoded) {
     const data = JSON.parse(decodeURIComponent(atob(encoded)));
     state.customItems = (data.c || []).map(([id, name]) => ({ id, name }));
     state.roundCount = data.r || 10;
-    const roadmap = {
-      id: 'r_' + uid(),
-      label: data.l || 'ロードマップ',
-      placements: (data.p || []).map(([itemId, col]) => ({ instanceId: uid(), itemId, col })),
-    };
-    state.roadmaps = [roadmap];
-    state.selectedRoadmapId = roadmap.id;
+    if (data.roadmaps) {
+      // 新フォーマット（複数ロードマップ）
+      state.roadmaps = data.roadmaps.map(rm => ({
+        id: 'r_' + uid(),
+        label: rm.l || 'ロードマップ',
+        placements: (rm.p || []).map(([itemId, col]) => ({ instanceId: uid(), itemId, col })),
+      }));
+    } else {
+      // 旧フォーマット（単一ロードマップ）
+      state.roadmaps = [{
+        id: 'r_' + uid(),
+        label: data.l || 'ロードマップ',
+        placements: (data.p || []).map(([itemId, col]) => ({ instanceId: uid(), itemId, col })),
+      }];
+    }
+    state.selectedRoadmapIds = state.roadmaps.map(r => r.id);
   } catch (_) {}
 }
 
@@ -386,15 +404,22 @@ function renderGrid() {
 }
 
 function createRoadmapBlock(roadmap) {
-  const isSelected = roadmap.id === state.selectedRoadmapId;
+  const isSelected = state.selectedRoadmapIds.includes(roadmap.id);
   const block = document.createElement('div');
   block.className = 'roadmap-block' + (isSelected ? ' selected' : '');
   block.dataset.roadmapId = roadmap.id;
-  block.addEventListener('click', () => selectRoadmap(roadmap.id));
 
   // Header
   const header = document.createElement('div');
   header.className = 'roadmap-block-header';
+
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.className = 'roadmap-select-check';
+  checkbox.checked = isSelected;
+  checkbox.title = 'エクスポート対象に含める';
+  checkbox.addEventListener('click', e => e.stopPropagation());
+  checkbox.addEventListener('change', () => toggleRoadmapSelection(roadmap.id));
 
   const titleSpan = document.createElement('span');
   titleSpan.className = 'roadmap-block-title';
@@ -432,6 +457,7 @@ function createRoadmapBlock(roadmap) {
   btnGroup.appendChild(downBtn);
   btnGroup.appendChild(delBtn);
 
+  header.appendChild(checkbox);
   header.appendChild(titleSpan);
   header.appendChild(btnGroup);
   block.appendChild(header);
@@ -567,10 +593,27 @@ function removePlacement(instanceId) {
   }
 }
 
+function toggleRoadmapSelection(id) {
+  const idx = state.selectedRoadmapIds.indexOf(id);
+  if (idx === -1) {
+    state.selectedRoadmapIds.push(id);
+  } else {
+    state.selectedRoadmapIds.splice(idx, 1);
+  }
+  saveState();
+  const isSelected = state.selectedRoadmapIds.includes(id);
+  const block = document.querySelector(`.roadmap-block[data-roadmap-id="${id}"]`);
+  if (block) {
+    block.classList.toggle('selected', isSelected);
+    const check = block.querySelector('.roadmap-select-check');
+    if (check) check.checked = isSelected;
+  }
+}
+
 function addRoadmap() {
   const roadmap = { id: 'r_' + uid(), label: `ロードマップ${state.roadmaps.length + 1}`, placements: [] };
   state.roadmaps.push(roadmap);
-  state.selectedRoadmapId = roadmap.id;
+  state.selectedRoadmapIds.push(roadmap.id);
   saveState();
   renderGrid();
 }
@@ -590,20 +633,9 @@ function deleteRoadmap(id) {
   const idx = state.roadmaps.findIndex(r => r.id === id);
   if (idx === -1) return;
   state.roadmaps.splice(idx, 1);
-  if (state.selectedRoadmapId === id) {
-    state.selectedRoadmapId = state.roadmaps[Math.max(0, idx - 1)].id;
-  }
+  state.selectedRoadmapIds = state.selectedRoadmapIds.filter(sid => sid !== id);
   saveState();
   renderGrid();
-}
-
-function selectRoadmap(id) {
-  if (state.selectedRoadmapId === id) return;
-  state.selectedRoadmapId = id;
-  saveState();
-  document.querySelectorAll('.roadmap-block').forEach(el => {
-    el.classList.toggle('selected', el.dataset.roadmapId === id);
-  });
 }
 
 // ============================================================
@@ -661,61 +693,153 @@ function addCustomItem(name) {
 // ============================================================
 // Export – PNG
 // ============================================================
+// rrect / wrapText — canvas helpers
+function rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function wrapText(ctx, text, cx, y, maxW, lh) {
+  let line = '';
+  const lines = [];
+  for (const ch of text) {
+    const t = line + ch;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = ch; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  lines.slice(0, 3).forEach((l, i) => ctx.fillText(l, cx, y + i * lh));
+}
+
 async function exportPng() {
-  const roadmap = getSelectedRoadmap();
-  if (!roadmap) return;
+  const roadmaps = getSelectedRoadmaps();
+  if (!roadmaps.length) { showToast('エクスポートするロードマップを選択してください'); return; }
 
-  const container = document.createElement('div');
-  container.className = 'roadmap-canvas';
-  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
-  document.body.appendChild(container);
+  // 必要な画像を事前ロード
+  const imgCache = new Map();
+  const itemIds = [...new Set(roadmaps.flatMap(rm => rm.placements.map(pl => pl.itemId)))];
+  await Promise.all(itemIds.map(itemId => {
+    const item = getItemById(itemId);
+    if (!item) return;
+    const src = getImage(itemId) || folderImageUrl(item.name);
+    const img = new Image();
+    return new Promise(resolve => {
+      img.onload = () => { imgCache.set(itemId, img); resolve(); };
+      img.onerror = resolve;
+      img.src = src;
+    });
+  }));
 
-  const block = document.createElement('div');
-  block.className = 'roadmap-block selected';
+  // レイアウト定数（CSS変数に対応）
+  const SCALE = 2;
+  const N = state.roundCount;
+  const CW = 72, CH = 88, HH = 36, CGAP = 2;
+  const BPX = 12, BPTY = 10, BPBY = 12;
+  const TH = 24, TM = 8;   // タイトル高さ・下マージン
+  const BGAP = 12;          // ブロック間隔
+  const CPAD = 16;          // キャンバス外周パディング
+  const CPPAD = 4, CGAP2 = 3, CHIP = 46; // セル内チップ
 
-  const header = document.createElement('div');
-  header.className = 'roadmap-block-header';
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'roadmap-block-title';
-  titleSpan.textContent = roadmap.label;
-  header.appendChild(titleSpan);
-  block.appendChild(header);
+  const blockW = BPX * 2 + N * CW + (N - 1) * CGAP;
+  const blockH = BPTY + TH + TM + HH + CGAP + CH + BPBY;
+  const totalW = CPAD * 2 + blockW;
+  const totalH = CPAD * 2 + roadmaps.length * blockH + Math.max(0, roadmaps.length - 1) * BGAP;
 
-  const grid = document.createElement('div');
-  grid.className = 'roadmap-grid';
-  grid.style.gridTemplateColumns = `repeat(${state.roundCount}, var(--cell-w))`;
-  grid.style.gridTemplateRows = `var(--header-h) minmax(var(--cell-h), auto)`;
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW * SCALE;
+  canvas.height = totalH * SCALE;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(SCALE, SCALE);
 
-  for (let col = 0; col < state.roundCount; col++) {
-    const h = document.createElement('div');
-    h.className = 'grid-col-header';
-    h.textContent = `R${col + 1}`;
-    grid.appendChild(h);
+  const C = {
+    bg: '#f0f1f6', panel: '#ffffff',
+    bgHeader: '#ecedf8', bgCell: '#f7f8fc',
+    border: '#dde0ee', borderSel: '#4f46e5',
+    accent: '#4f46e5', accentDim: 'rgba(79,70,229,0.1)',
+    text: '#1e1a3a',
+  };
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  for (let ri = 0; ri < roadmaps.length; ri++) {
+    const rm = roadmaps[ri];
+    const bx = CPAD;
+    const by = CPAD + ri * (blockH + BGAP);
+
+    // ブロック背景・枠
+    rrect(ctx, bx, by, blockW, blockH, 8);
+    ctx.fillStyle = C.accentDim; ctx.fill();
+    ctx.strokeStyle = C.borderSel; ctx.lineWidth = 2; ctx.stroke();
+
+    // タイトル
+    ctx.fillStyle = C.accent;
+    ctx.font = 'bold 14px "Segoe UI","Noto Sans JP",sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(rm.label, bx + BPX, by + BPTY + TH / 2);
+
+    const gx = bx + BPX;
+    const gy = by + BPTY + TH + TM;
+
+    // 列ヘッダー
+    for (let col = 0; col < N; col++) {
+      const hx = gx + col * (CW + CGAP);
+      rrect(ctx, hx, gy, CW, HH, 4);
+      ctx.fillStyle = C.bgHeader; ctx.fill();
+      ctx.strokeStyle = C.border; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = C.accent;
+      ctx.font = 'bold 11px "Segoe UI",sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(`R${col + 1}`, hx + CW / 2, gy + HH / 2);
+    }
+
+    // セル
+    const cy = gy + HH + CGAP;
+    for (let col = 0; col < N; col++) {
+      const cx = gx + col * (CW + CGAP);
+      rrect(ctx, cx, cy, CW, CH, 4);
+      ctx.fillStyle = C.bgCell; ctx.fill();
+      ctx.strokeStyle = C.border; ctx.lineWidth = 1; ctx.stroke();
+
+      let ix = cx + CPPAD, iy = cy + CPPAD;
+      for (const pl of rm.placements.filter(p => p.col === col)) {
+        const item = getItemById(pl.itemId);
+        if (!item) continue;
+        const img = imgCache.get(pl.itemId);
+
+        rrect(ctx, ix, iy, CHIP, CHIP, 4);
+        ctx.fillStyle = C.panel; ctx.fill();
+        ctx.strokeStyle = C.border; ctx.lineWidth = 1; ctx.stroke();
+
+        if (img && img.naturalWidth > 0) {
+          const IS = 44;
+          const sc = Math.min(IS / img.naturalWidth, IS / img.naturalHeight);
+          const iw = img.naturalWidth * sc, ih = img.naturalHeight * sc;
+          ctx.drawImage(img, ix + (CHIP - iw) / 2, iy + (CHIP - ih) / 2, iw, ih);
+        } else {
+          ctx.fillStyle = C.text;
+          ctx.font = '9px "Segoe UI","Noto Sans JP",sans-serif';
+          ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+          wrapText(ctx, item.name, ix + CHIP / 2, iy + 4, CHIP - 6, 11);
+        }
+
+        ix += CHIP + CGAP2;
+        if (ix + CHIP > cx + CW - CPPAD) { ix = cx + CPPAD; iy += CHIP + CGAP2; }
+      }
+    }
   }
-  for (let col = 0; col < state.roundCount; col++) {
-    const cell = document.createElement('div');
-    cell.className = 'grid-cell';
-    roadmap.placements
-      .filter(p => p.col === col)
-      .forEach(pl => cell.appendChild(createItemChip(pl)));
-    grid.appendChild(cell);
-  }
 
-  block.appendChild(grid);
-  container.appendChild(block);
-
-  try {
-    const result = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
-    document.body.removeChild(container);
-    const link = document.createElement('a');
-    link.download = `${roadmap.label}_roadmap.png`;
-    link.href = result.toDataURL('image/png');
-    link.click();
-    showToast('PNG を保存しました');
-  } catch (_) {
-    document.body.removeChild(container);
-    showToast('エクスポートに失敗しました');
-  }
+  const fn = roadmaps.length === 1 ? `${roadmaps[0].label}_roadmap.png` : 'roadmap.png';
+  const link = document.createElement('a');
+  link.download = fn;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('PNG を保存しました');
 }
 
 // ============================================================
@@ -772,7 +896,12 @@ function init() {
   if (!state.roadmaps.length) {
     const rm = defaultRoadmap();
     state.roadmaps = [rm];
-    state.selectedRoadmapId = rm.id;
+    state.selectedRoadmapIds = [rm.id];
+  }
+  // 不整合の修正（削除済みIDの除去・未設定の場合は全選択）
+  state.selectedRoadmapIds = state.selectedRoadmapIds.filter(id => state.roadmaps.some(r => r.id === id));
+  if (!state.selectedRoadmapIds.length) {
+    state.selectedRoadmapIds = state.roadmaps.map(r => r.id);
   }
 
   // Sync round count input

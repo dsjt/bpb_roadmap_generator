@@ -309,6 +309,14 @@ body {
   gap: 8px;
 }
 
+.roadmap-select-check {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .roadmap-block-title {
   font-size: 0.95rem;
   font-weight: 700;
