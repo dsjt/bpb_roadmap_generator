@@ -616,38 +616,6 @@ function triggerImageUpload(itemId) {
   input.click();
 }
 
-function triggerBulkUpload() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.multiple = true;
-  input.onchange = async e => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-
-    // アイテム名 → item のマップを作成
-    const nameMap = new Map(getAllItems().map(item => [item.name, item]));
-
-    let matched = 0;
-    await Promise.all(files.map(async file => {
-      const name = file.name.replace(/\.[^.]+$/, ''); // 拡張子除去
-      const item = nameMap.get(name);
-      if (!item) return;
-      saveImage(item.id, await resizeImageFile(file));
-      matched++;
-    }));
-
-    renderPalette();
-    renderGrid();
-    const unmatched = files.length - matched;
-    const msg = unmatched > 0
-      ? `${matched}件を紐づけました（${unmatched}件は該当なし）`
-      : `${matched}件を紐づけました`;
-    showToast(msg);
-  };
-  input.click();
-}
-
 // ============================================================
 // Custom item
 // ============================================================
@@ -801,7 +769,6 @@ function init() {
     if (name && name.trim()) addCustomItem(name.trim());
   });
 
-  document.getElementById('btn-bulk-upload').addEventListener('click', triggerBulkUpload);
   document.getElementById('btn-add-roadmap').addEventListener('click', addRoadmap);
 
   // Export buttons
