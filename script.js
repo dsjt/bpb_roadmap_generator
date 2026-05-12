@@ -286,7 +286,7 @@ function getItemById(id) {
 // Folder image
 // ============================================================
 function folderImageUrl(itemName) {
-  return `images/${encodeURIComponent(itemName)}.jpg`;
+  return `images/${encodeURIComponent(itemName)}.png`;
 }
 
 // img要素を生成し、フォルダ画像の読み込みを試みる。
