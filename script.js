@@ -753,17 +753,33 @@ async function exportPng() {
   // レイアウト定数（CSS変数に対応）
   const SCALE = 2;
   const N = state.roundCount;
-  const CW = 72, CH = 88, HH = 36, CGAP = 2;
+  const CW = 72, CH_MIN = 88, HH = 36, CGAP = 2;
   const BPX = 12, BPTY = 10, BPBY = 12;
-  const TH = 24, TM = 8;   // タイトル高さ・下マージン
-  const BGAP = 12;          // ブロック間隔
-  const CPAD = 16;          // キャンバス外周パディング
-  const CPPAD = 4, CGAP2 = 3, CHIP = 46; // セル内チップ
+  const TH = 24, TM = 8;
+  const BGAP = 12;
+  const CPAD = 16;
+  const CPPAD = 4, CGAP2 = 3, CHIP = 46;
+
+  // セル内の1列あたりのチップ数からセル高さを計算
+  function calcCellH(itemCount) {
+    if (itemCount === 0) return CH_MIN;
+    return Math.max(CH_MIN, 2 * CPPAD + itemCount * CHIP + (itemCount - 1) * CGAP2);
+  }
+
+  // ロードマップごとにセル高さとブロック高さを確定
+  const layouts = roadmaps.map(rm => {
+    const maxItems = Math.max(0, ...Array.from({ length: N }, (_, col) =>
+      rm.placements.filter(p => p.col === col).length
+    ));
+    const cellH = calcCellH(maxItems);
+    const blockH = BPTY + TH + TM + HH + CGAP + cellH + BPBY;
+    return { rm, cellH, blockH };
+  });
 
   const blockW = BPX * 2 + N * CW + (N - 1) * CGAP;
-  const blockH = BPTY + TH + TM + HH + CGAP + CH + BPBY;
   const totalW = CPAD * 2 + blockW;
-  const totalH = CPAD * 2 + roadmaps.length * blockH + Math.max(0, roadmaps.length - 1) * BGAP;
+  const totalH = CPAD * 2 + layouts.reduce((s, l) => s + l.blockH, 0) +
+    Math.max(0, layouts.length - 1) * BGAP;
 
   const canvas = document.createElement('canvas');
   canvas.width = totalW * SCALE;
@@ -782,10 +798,11 @@ async function exportPng() {
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, totalW, totalH);
 
-  for (let ri = 0; ri < roadmaps.length; ri++) {
-    const rm = roadmaps[ri];
+  let byOffset = CPAD;
+  for (const { rm, cellH, blockH } of layouts) {
     const bx = CPAD;
-    const by = CPAD + ri * (blockH + BGAP);
+    const by = byOffset;
+    byOffset += blockH + BGAP;
 
     // ブロック背景・枠
     rrect(ctx, bx, by, blockW, blockH, 8);
@@ -817,7 +834,7 @@ async function exportPng() {
     const cy = gy + HH + CGAP;
     for (let col = 0; col < N; col++) {
       const cx = gx + col * (CW + CGAP);
-      rrect(ctx, cx, cy, CW, CH, 4);
+      rrect(ctx, cx, cy, CW, cellH, 4);
       ctx.fillStyle = C.bgCell; ctx.fill();
       ctx.strokeStyle = C.border; ctx.lineWidth = 1; ctx.stroke();
 
