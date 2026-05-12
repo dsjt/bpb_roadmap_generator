@@ -276,7 +276,7 @@ body {
 .canvas-area::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
 
 .canvas-scroll { display: inline-block; }
-.canvas-footer { margin-top: 10px; }
+.canvas-footer { margin-top: 10px; display: flex; gap: 8px; }
 
 .roadmap-canvas {
   background: var(--bg-panel);
@@ -309,12 +309,30 @@ body {
   gap: 8px;
 }
 
-.roadmap-select-check {
-  width: 15px;
-  height: 15px;
+.roadmap-select-toggle {
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-  accent-color: var(--accent);
+  border-radius: 6px;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-panel);
+  color: transparent;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.roadmap-select-toggle.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.roadmap-select-toggle:hover:not(.active) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .roadmap-block-title {

@@ -401,6 +401,7 @@ function renderGrid() {
   const container = document.getElementById('roadmap-blocks');
   container.innerHTML = '';
   state.roadmaps.forEach(roadmap => container.appendChild(createRoadmapBlock(roadmap)));
+  updateSelectAllBtn();
 }
 
 function createRoadmapBlock(roadmap) {
@@ -413,13 +414,11 @@ function createRoadmapBlock(roadmap) {
   const header = document.createElement('div');
   header.className = 'roadmap-block-header';
 
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.className = 'roadmap-select-check';
-  checkbox.checked = isSelected;
-  checkbox.title = 'エクスポート対象に含める';
-  checkbox.addEventListener('click', e => e.stopPropagation());
-  checkbox.addEventListener('change', () => toggleRoadmapSelection(roadmap.id));
+  const toggle = document.createElement('button');
+  toggle.className = 'roadmap-select-toggle' + (isSelected ? ' active' : '');
+  toggle.title = 'エクスポート対象に含める';
+  toggle.textContent = '✓';
+  toggle.addEventListener('click', e => { e.stopPropagation(); toggleRoadmapSelection(roadmap.id); });
 
   const titleSpan = document.createElement('span');
   titleSpan.className = 'roadmap-block-title';
@@ -457,7 +456,7 @@ function createRoadmapBlock(roadmap) {
   btnGroup.appendChild(downBtn);
   btnGroup.appendChild(delBtn);
 
-  header.appendChild(checkbox);
+  header.appendChild(toggle);
   header.appendChild(titleSpan);
   header.appendChild(btnGroup);
   block.appendChild(header);
@@ -593,6 +592,21 @@ function removePlacement(instanceId) {
   }
 }
 
+function updateSelectAllBtn() {
+  const btn = document.getElementById('btn-select-all');
+  if (!btn) return;
+  const allSelected = state.roadmaps.length > 0 &&
+    state.roadmaps.every(r => state.selectedRoadmapIds.includes(r.id));
+  btn.textContent = allSelected ? '全て解除' : '全て選択';
+}
+
+function toggleSelectAll() {
+  const allSelected = state.roadmaps.every(r => state.selectedRoadmapIds.includes(r.id));
+  state.selectedRoadmapIds = allSelected ? [] : state.roadmaps.map(r => r.id);
+  saveState();
+  renderGrid();
+}
+
 function toggleRoadmapSelection(id) {
   const idx = state.selectedRoadmapIds.indexOf(id);
   if (idx === -1) {
@@ -605,9 +619,10 @@ function toggleRoadmapSelection(id) {
   const block = document.querySelector(`.roadmap-block[data-roadmap-id="${id}"]`);
   if (block) {
     block.classList.toggle('selected', isSelected);
-    const check = block.querySelector('.roadmap-select-check');
-    if (check) check.checked = isSelected;
+    const tog = block.querySelector('.roadmap-select-toggle');
+    if (tog) tog.classList.toggle('active', isSelected);
   }
+  updateSelectAllBtn();
 }
 
 function addRoadmap() {
@@ -931,6 +946,7 @@ function init() {
   });
 
   document.getElementById('btn-add-roadmap').addEventListener('click', addRoadmap);
+  document.getElementById('btn-select-all').addEventListener('click', toggleSelectAll);
 
   // Export buttons
   document.getElementById('btn-export').addEventListener('click', exportPng);
