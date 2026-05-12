@@ -181,10 +181,19 @@ const PREDEFINED_ITEMS = [
 // State
 // ============================================================
 let state = {
-  placements: [],   // [{ instanceId, itemId, col }]
-  customItems: [],  // [{ id, name }]
+  roadmaps: [],            // [{ id, label, placements: [{ instanceId, itemId, col }] }]
+  selectedRoadmapId: null,
+  customItems: [],
   roundCount: 10,
 };
+
+function defaultRoadmap() {
+  return { id: 'r_' + uid(), label: 'ロードマップ', placements: [] };
+}
+
+function getSelectedRoadmap() {
+  return state.roadmaps.find(r => r.id === state.selectedRoadmapId) || state.roadmaps[0] || null;
+}
 
 // ============================================================
 // Persistence – localStorage
@@ -194,7 +203,8 @@ const STORAGE_KEY = 'bpb_roadmap_v1';
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      placements: state.placements,
+      roadmaps: state.roadmaps,
+      selectedRoadmapId: state.selectedRoadmapId,
       customItems: state.customItems,
       roundCount: state.roundCount,
     }));
@@ -206,7 +216,13 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
-    state.placements = saved.placements || [];
+    // 旧フォーマット（placements がトップレベル）からの移行
+    if (saved.placements) {
+      state.roadmaps = [{ id: 'r_' + uid(), label: 'ロードマップ', placements: saved.placements }];
+    } else {
+      state.roadmaps = saved.roadmaps || [defaultRoadmap()];
+    }
+    state.selectedRoadmapId = saved.selectedRoadmapId || state.roadmaps[0].id;
     state.customItems = saved.customItems || [];
     state.roundCount = saved.roundCount || 10;
   } catch (_) {}
@@ -226,8 +242,10 @@ function getImage(itemId) {
 // URL encode / decode
 // ============================================================
 function encodeStateToUrl() {
+  const roadmap = getSelectedRoadmap();
   const data = {
-    p: state.placements.map(pl => [pl.itemId, pl.col]),
+    p: roadmap ? roadmap.placements.map(pl => [pl.itemId, pl.col]) : [],
+    l: roadmap ? roadmap.label : 'ロードマップ',
     c: state.customItems.map(ci => [ci.id, ci.name]),
     r: state.roundCount,
   };
@@ -238,12 +256,14 @@ function decodeStateFromUrl(encoded) {
   try {
     const data = JSON.parse(decodeURIComponent(atob(encoded)));
     state.customItems = (data.c || []).map(([id, name]) => ({ id, name }));
-    state.placements = (data.p || []).map(([itemId, col]) => ({
-      instanceId: uid(),
-      itemId,
-      col,
-    }));
     state.roundCount = data.r || 10;
+    const roadmap = {
+      id: 'r_' + uid(),
+      label: data.l || 'ロードマップ',
+      placements: (data.p || []).map(([itemId, col]) => ({ instanceId: uid(), itemId, col })),
+    };
+    state.roadmaps = [roadmap];
+    state.selectedRoadmapId = roadmap.id;
   } catch (_) {}
 }
 
@@ -260,6 +280,25 @@ function getAllItems() {
 
 function getItemById(id) {
   return getAllItems().find(item => item.id === id) || null;
+}
+
+// ============================================================
+// Folder image
+// ============================================================
+function folderImageUrl(itemName) {
+  return `images/${encodeURIComponent(itemName)}.jpg`;
+}
+
+// img要素を生成し、フォルダ画像の読み込みを試みる。
+// 成功すればonLoad()、失敗しても何もしない（呼び出し側でフォールバックを用意すること）
+function tryFolderImage(itemName, imgClass, onLoad) {
+  const img = document.createElement('img');
+  img.className = imgClass;
+  img.alt = '';
+  img.style.display = 'none';
+  img.onload = () => onLoad(img);
+  img.src = folderImageUrl(itemName);
+  return img;
 }
 
 // ============================================================
@@ -289,13 +328,23 @@ function renderPalette() {
     const imgSrc = getImage(item.id);
     const thumb = imgSrc
       ? `<div class="palette-thumb-wrap"><img class="palette-thumb" src="${imgSrc}" alt=""><button class="palette-img-remove" title="画像を削除" tabindex="-1">×</button></div>`
-      : `<div class="palette-avatar">${item.name.charAt(0)}</div>`;
+      : `<div class="palette-thumb-wrap"><div class="palette-avatar">${item.name.charAt(0)}</div></div>`;
 
     li.innerHTML = `
       ${thumb}
       <span class="palette-name" title="${item.name}">${item.name}</span>
       <button class="palette-upload-btn" title="画像を設定" tabindex="-1">📷</button>
     `;
+
+    // localStorage画像がなければフォルダ画像を試みる
+    if (!imgSrc) {
+      const wrap = li.querySelector('.palette-thumb-wrap');
+      const avatar = wrap.querySelector('.palette-avatar');
+      wrap.appendChild(tryFolderImage(item.name, 'palette-thumb', img => {
+        avatar.style.display = 'none';
+        img.style.display = 'block';
+      }));
+    }
 
     li.addEventListener('dragstart', e => {
       dragSource = { type: 'palette', itemId: item.id };
@@ -331,34 +380,58 @@ function renderPalette() {
 // Grid rendering
 // ============================================================
 function renderGrid() {
-  const grid = document.getElementById('roadmap-grid');
-  grid.innerHTML = '';
-  grid.style.gridTemplateColumns = `var(--label-w) repeat(${state.roundCount}, var(--cell-w))`;
+  const container = document.getElementById('roadmap-blocks');
+  container.innerHTML = '';
+  state.roadmaps.forEach(roadmap => container.appendChild(createRoadmapBlock(roadmap)));
+}
 
-  // Corner cell
-  const corner = document.createElement('div');
-  corner.className = 'grid-corner';
-  grid.appendChild(corner);
+function createRoadmapBlock(roadmap) {
+  const isSelected = roadmap.id === state.selectedRoadmapId;
+  const block = document.createElement('div');
+  block.className = 'roadmap-block' + (isSelected ? ' selected' : '');
+  block.dataset.roadmapId = roadmap.id;
+  block.addEventListener('click', () => selectRoadmap(roadmap.id));
 
-  // Column headers R1–Rn
+  // Header
+  const header = document.createElement('div');
+  header.className = 'roadmap-block-header';
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'roadmap-block-title';
+  titleSpan.contentEditable = 'true';
+  titleSpan.spellcheck = false;
+  titleSpan.textContent = roadmap.label;
+  titleSpan.addEventListener('input', () => { roadmap.label = titleSpan.textContent; saveState(); });
+  titleSpan.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); titleSpan.blur(); } });
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'roadmap-delete-btn';
+  delBtn.textContent = '削除';
+  delBtn.disabled = state.roadmaps.length <= 1;
+  delBtn.addEventListener('click', e => { e.stopPropagation(); deleteRoadmap(roadmap.id); });
+
+  header.appendChild(titleSpan);
+  header.appendChild(delBtn);
+  block.appendChild(header);
+
+  // Grid
+  const grid = document.createElement('div');
+  grid.className = 'roadmap-grid';
+  grid.style.gridTemplateColumns = `repeat(${state.roundCount}, var(--cell-w))`;
+  grid.style.gridTemplateRows = `var(--header-h) minmax(var(--cell-h), auto)`;
+
   for (let col = 0; col < state.roundCount; col++) {
-    const header = document.createElement('div');
-    header.className = 'grid-col-header';
-    header.textContent = `R${col + 1}`;
-    grid.appendChild(header);
+    const h = document.createElement('div');
+    h.className = 'grid-col-header';
+    h.textContent = `R${col + 1}`;
+    grid.appendChild(h);
   }
 
-  // Row label
-  const rowLabel = document.createElement('div');
-  rowLabel.className = 'grid-row-label';
-  rowLabel.textContent = 'ロードマップ';
-  grid.appendChild(rowLabel);
-
-  // n cells
   for (let col = 0; col < state.roundCount; col++) {
     const cell = document.createElement('div');
     cell.className = 'grid-cell';
     cell.dataset.col = col;
+    cell.dataset.roadmapId = roadmap.id;
 
     cell.addEventListener('dragover', e => {
       e.preventDefault();
@@ -372,19 +445,21 @@ function renderGrid() {
       e.preventDefault();
       cell.classList.remove('drag-over');
       if (dragSource && dragSource.type === 'cell') {
-        movePlacement(dragSource.instanceId, col);
+        movePlacement(dragSource.instanceId, roadmap.id, col);
       } else if (dragSource && dragSource.type === 'palette') {
-        addPlacement(dragSource.itemId, col);
+        addPlacement(dragSource.itemId, roadmap.id, col);
       }
     });
 
-    // Render existing placements
-    state.placements
+    roadmap.placements
       .filter(p => p.col === col)
       .forEach(pl => cell.appendChild(createItemChip(pl)));
 
     grid.appendChild(cell);
   }
+
+  block.appendChild(grid);
+  return block;
 }
 
 function createItemChip(placement) {
@@ -406,6 +481,12 @@ function createItemChip(placement) {
     text.className = 'cell-item-text';
     text.textContent = item ? item.name : '?';
     chip.appendChild(text);
+    if (item) {
+      chip.appendChild(tryFolderImage(item.name, 'cell-item-img', img => {
+        text.remove();
+        img.style.display = '';
+      }));
+    }
   }
 
   chip.draggable = true;
@@ -416,10 +497,7 @@ function createItemChip(placement) {
     chip.classList.add('dragging');
     e.stopPropagation();
   });
-  chip.addEventListener('dragend', () => {
-    dragSource = null;
-    chip.classList.remove('dragging');
-  });
+  chip.addEventListener('dragend', () => { dragSource = null; chip.classList.remove('dragging'); });
   chip.addEventListener('click', () => removePlacement(placement.instanceId));
   return chip;
 }
@@ -427,31 +505,73 @@ function createItemChip(placement) {
 // ============================================================
 // State mutations
 // ============================================================
-function addPlacement(itemId, col) {
+function addPlacement(itemId, roadmapId, col) {
   if (!getItemById(itemId)) return;
+  const roadmap = state.roadmaps.find(r => r.id === roadmapId);
+  if (!roadmap) return;
   const placement = { instanceId: uid(), itemId, col };
-  state.placements.push(placement);
+  roadmap.placements.push(placement);
   saveState();
-
-  const cell = document.querySelector(`.grid-cell[data-col="${col}"]`);
+  const cell = document.querySelector(`.grid-cell[data-roadmap-id="${roadmapId}"][data-col="${col}"]`);
   if (cell) cell.appendChild(createItemChip(placement));
 }
 
-function movePlacement(instanceId, newCol) {
-  const pl = state.placements.find(p => p.instanceId === instanceId);
-  if (!pl || pl.col === newCol) return;
-  pl.col = newCol;
-  saveState();
-  const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
-  const newCell = document.querySelector(`.grid-cell[data-col="${newCol}"]`);
-  if (chip && newCell) newCell.appendChild(chip);
+function movePlacement(instanceId, newRoadmapId, newCol) {
+  for (const roadmap of state.roadmaps) {
+    const idx = roadmap.placements.findIndex(p => p.instanceId === instanceId);
+    if (idx === -1) continue;
+    const [pl] = roadmap.placements.splice(idx, 1);
+    pl.col = newCol;
+    const target = state.roadmaps.find(r => r.id === newRoadmapId);
+    if (target) target.placements.push(pl);
+    saveState();
+    const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
+    const newCell = document.querySelector(`.grid-cell[data-roadmap-id="${newRoadmapId}"][data-col="${newCol}"]`);
+    if (chip && newCell) newCell.appendChild(chip);
+    return;
+  }
 }
 
 function removePlacement(instanceId) {
-  state.placements = state.placements.filter(p => p.instanceId !== instanceId);
+  for (const roadmap of state.roadmaps) {
+    const idx = roadmap.placements.findIndex(p => p.instanceId === instanceId);
+    if (idx !== -1) {
+      roadmap.placements.splice(idx, 1);
+      saveState();
+      const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
+      if (chip) chip.remove();
+      return;
+    }
+  }
+}
+
+function addRoadmap() {
+  const roadmap = { id: 'r_' + uid(), label: `ロードマップ${state.roadmaps.length + 1}`, placements: [] };
+  state.roadmaps.push(roadmap);
+  state.selectedRoadmapId = roadmap.id;
   saveState();
-  const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
-  if (chip) chip.remove();
+  renderGrid();
+}
+
+function deleteRoadmap(id) {
+  if (state.roadmaps.length <= 1) return;
+  const idx = state.roadmaps.findIndex(r => r.id === id);
+  if (idx === -1) return;
+  state.roadmaps.splice(idx, 1);
+  if (state.selectedRoadmapId === id) {
+    state.selectedRoadmapId = state.roadmaps[Math.max(0, idx - 1)].id;
+  }
+  saveState();
+  renderGrid();
+}
+
+function selectRoadmap(id) {
+  if (state.selectedRoadmapId === id) return;
+  state.selectedRoadmapId = id;
+  saveState();
+  document.querySelectorAll('.roadmap-block').forEach(el => {
+    el.classList.toggle('selected', el.dataset.roadmapId === id);
+  });
 }
 
 // ============================================================
@@ -542,20 +662,58 @@ function addCustomItem(name) {
 // Export – PNG
 // ============================================================
 async function exportPng() {
-  const canvas = document.getElementById('roadmap-canvas');
+  const roadmap = getSelectedRoadmap();
+  if (!roadmap) return;
+
+  const container = document.createElement('div');
+  container.className = 'roadmap-canvas';
+  container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+  document.body.appendChild(container);
+
+  const block = document.createElement('div');
+  block.className = 'roadmap-block selected';
+
+  const header = document.createElement('div');
+  header.className = 'roadmap-block-header';
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'roadmap-block-title';
+  titleSpan.textContent = roadmap.label;
+  header.appendChild(titleSpan);
+  block.appendChild(header);
+
+  const grid = document.createElement('div');
+  grid.className = 'roadmap-grid';
+  grid.style.gridTemplateColumns = `repeat(${state.roundCount}, var(--cell-w))`;
+  grid.style.gridTemplateRows = `var(--header-h) minmax(var(--cell-h), auto)`;
+
+  for (let col = 0; col < state.roundCount; col++) {
+    const h = document.createElement('div');
+    h.className = 'grid-col-header';
+    h.textContent = `R${col + 1}`;
+    grid.appendChild(h);
+  }
+  for (let col = 0; col < state.roundCount; col++) {
+    const cell = document.createElement('div');
+    cell.className = 'grid-cell';
+    roadmap.placements
+      .filter(p => p.col === col)
+      .forEach(pl => cell.appendChild(createItemChip(pl)));
+    grid.appendChild(cell);
+  }
+
+  block.appendChild(grid);
+  container.appendChild(block);
+
   try {
-    const result = await html2canvas(canvas, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-    });
-    const title = (document.getElementById('canvas-title').textContent.trim() || 'roadmap');
+    const result = await html2canvas(container, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+    document.body.removeChild(container);
     const link = document.createElement('a');
-    link.download = `${title}_roadmap.png`;
+    link.download = `${roadmap.label}_roadmap.png`;
     link.href = result.toDataURL('image/png');
     link.click();
     showToast('PNG を保存しました');
   } catch (_) {
+    document.body.removeChild(container);
     showToast('エクスポートに失敗しました');
   }
 }
@@ -610,6 +768,12 @@ function init() {
   } else {
     loadState();
   }
+  // 初回起動時のデフォルト
+  if (!state.roadmaps.length) {
+    const rm = defaultRoadmap();
+    state.roadmaps = [rm];
+    state.selectedRoadmapId = rm.id;
+  }
 
   // Sync round count input
   const roundInput = document.getElementById('round-count-input');
@@ -638,18 +802,12 @@ function init() {
   });
 
   document.getElementById('btn-bulk-upload').addEventListener('click', triggerBulkUpload);
+  document.getElementById('btn-add-roadmap').addEventListener('click', addRoadmap);
 
   // Export buttons
   document.getElementById('btn-export').addEventListener('click', exportPng);
   document.getElementById('btn-share').addEventListener('click', copyShareUrl);
 
-  // Save canvas title to localStorage
-  const titleEl = document.getElementById('canvas-title');
-  const savedTitle = localStorage.getItem('bpb_title');
-  if (savedTitle) titleEl.textContent = savedTitle;
-  titleEl.addEventListener('input', () => {
-    localStorage.setItem('bpb_title', titleEl.textContent);
-  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
