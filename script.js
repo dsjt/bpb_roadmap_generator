@@ -875,6 +875,78 @@ async function exportPng() {
 }
 
 // ============================================================
+// Export / Import – JSON
+// ============================================================
+function exportJson() {
+  const roadmaps = getSelectedRoadmaps();
+  if (!roadmaps.length) { showToast('保存するロードマップを選択してください'); return; }
+  const data = {
+    version: 1,
+    roadmaps: roadmaps.map(rm => ({
+      label: rm.label,
+      placements: rm.placements.map(pl => ({ itemId: pl.itemId, col: pl.col })),
+    })),
+    customItems: state.customItems.map(ci => ({ id: ci.id, name: ci.name })),
+    roundCount: state.roundCount,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const link = document.createElement('a');
+  link.download = `bpb_roadmap_${today}.json`;
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast('JSON を保存しました');
+}
+
+function importJson() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      let data;
+      try { data = JSON.parse(ev.target.result); } catch { showToast('JSON の読み込みに失敗しました'); return; }
+
+      const importedRoadmaps = Array.isArray(data.roadmaps) ? data.roadmaps : [];
+      const importedCustomItems = Array.isArray(data.customItems) ? data.customItems : [];
+
+      // ロードマップを末尾に追加（IDを新規発行して衝突回避）
+      const newRoadmaps = importedRoadmaps.map(rm => ({
+        id: 'r_' + uid(),
+        label: rm.label || 'ロードマップ',
+        placements: (rm.placements || []).map(pl => ({
+          instanceId: uid(),
+          itemId: pl.itemId,
+          col: pl.col,
+        })),
+      }));
+      state.roadmaps.push(...newRoadmaps);
+      state.selectedRoadmapIds.push(...newRoadmaps.map(r => r.id));
+
+      // カスタムアイテムを追加（ID重複はスキップ）
+      const existingIds = new Set(state.customItems.map(ci => ci.id));
+      for (const ci of importedCustomItems) {
+        if (!existingIds.has(ci.id)) {
+          state.customItems.push({ id: ci.id, name: ci.name });
+          existingIds.add(ci.id);
+        }
+      }
+
+      saveState();
+      renderGrid();
+      renderPalette();
+      showToast(`${newRoadmaps.length} 件のロードマップを追加しました`);
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+// ============================================================
 // Export – URL
 // ============================================================
 function copyShareUrl() {
@@ -968,6 +1040,8 @@ function init() {
   // Export buttons
   document.getElementById('btn-export').addEventListener('click', exportPng);
   document.getElementById('btn-share').addEventListener('click', copyShareUrl);
+  document.getElementById('btn-export-json').addEventListener('click', exportJson);
+  document.getElementById('btn-import-json').addEventListener('click', importJson);
 
 }
 
