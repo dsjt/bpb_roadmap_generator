@@ -142,6 +142,35 @@ body {
 }
 .palette-btns .btn { flex: 1; }
 
+.rarity-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.rarity-btn {
+  padding: 3px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-cell);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+.rarity-btn:hover { border-color: #b0b4ce; color: var(--text); }
+
+.rarity-btn.active                        { border-color: transparent; color: #fff; }
+.rarity-btn[data-rarity=""].active        { background: var(--accent); }
+.rarity-btn[data-rarity="common"].active  { background: #6b7280; }
+.rarity-btn[data-rarity="rare"].active    { background: #2563eb; }
+.rarity-btn[data-rarity="epic"].active    { background: #7c3aed; }
+.rarity-btn[data-rarity="legendary"].active { background: #d97706; }
+.rarity-btn[data-rarity="god"].active     { background: #dc2626; }
+.rarity-btn[data-rarity="unique"].active  { background: #059669; }
+
 #palette-search {
   width: 100%;
   padding: 7px 10px;

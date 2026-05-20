@@ -27,6 +27,15 @@
     <aside class="palette-panel">
       <div class="palette-top">
         <input id="palette-search" type="text" placeholder="アイテムを検索…" autocomplete="off">
+        <div id="rarity-filter" class="rarity-filter">
+          <button class="rarity-btn active" data-rarity="">全て</button>
+          <button class="rarity-btn" data-rarity="common">コモン</button>
+          <button class="rarity-btn" data-rarity="rare">レア</button>
+          <button class="rarity-btn" data-rarity="epic">エピック</button>
+          <button class="rarity-btn" data-rarity="legendary">レジェンダリ</button>
+          <button class="rarity-btn" data-rarity="god">ゴッド</button>
+          <button class="rarity-btn" data-rarity="unique">ユニーク</button>
+        </div>
         <div class="palette-btns">
           <button id="btn-add-custom" class="btn btn-sm">＋ カスタム</button>
         </div>
@@ -49,6 +58,7 @@
 
   <div id="toast" class="toast hidden"></div>
 
+  <script src="items.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
