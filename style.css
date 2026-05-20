@@ -462,24 +462,32 @@ body {
   overflow: hidden;
   max-width: 64px;
 }
-.cell-item:hover { border-color: var(--danger); cursor: pointer; }
+.cell-item:hover { border-color: var(--danger); }
 .cell-item.dragging { opacity: 0.3; cursor: grabbing; }
-.cell-item:hover::after {
-  content: '×';
+
+.cell-item-remove {
   position: absolute;
   top: 0;
   right: 0;
-  background: var(--danger);
-  color: #fff;
-  font-size: 0.6rem;
   width: 13px;
   height: 13px;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 0 3px 0 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 0 3px 0 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 0;
   line-height: 1;
 }
+.cell-item:hover .cell-item-remove { opacity: 1; }
+.cell-item.drop-before { box-shadow: 0 -2px 0 0 var(--accent), var(--shadow-sm); }
 
 .cell-item-img {
   width: 44px;

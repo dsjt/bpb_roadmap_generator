@@ -145,6 +145,7 @@ function tryFolderImage(itemName, imgClass, onLoad) {
 // Drag source tracker
 // ============================================================
 let dragSource = null; // { type: 'palette', itemId } | { type: 'cell', instanceId }
+let dragDropHandled = false; // セルへのドロップが成立したかどうか
 
 // ============================================================
 // Palette rendering
@@ -318,17 +319,26 @@ function createRoadmapBlock(roadmap) {
       e.preventDefault();
       e.dataTransfer.dropEffect = (dragSource && dragSource.type === 'cell') ? 'move' : 'copy';
       cell.classList.add('drag-over');
+      const idx = getInsertionIndex(cell, e.clientY);
+      const chips = [...cell.querySelectorAll('.cell-item:not(.dragging)')];
+      chips.forEach((c, i) => c.classList.toggle('drop-before', i === idx));
     });
     cell.addEventListener('dragleave', e => {
-      if (!cell.contains(e.relatedTarget)) cell.classList.remove('drag-over');
+      if (!cell.contains(e.relatedTarget)) {
+        cell.classList.remove('drag-over');
+        cell.querySelectorAll('.cell-item').forEach(c => c.classList.remove('drop-before'));
+      }
     });
     cell.addEventListener('drop', e => {
       e.preventDefault();
       cell.classList.remove('drag-over');
+      cell.querySelectorAll('.cell-item').forEach(c => c.classList.remove('drop-before'));
+      const insertIdx = getInsertionIndex(cell, e.clientY);
       if (dragSource && dragSource.type === 'cell') {
-        movePlacement(dragSource.instanceId, roadmap.id, col);
+        dragDropHandled = true;
+        movePlacement(dragSource.instanceId, roadmap.id, col, insertIdx);
       } else if (dragSource && dragSource.type === 'palette') {
-        addPlacement(dragSource.itemId, roadmap.id, col);
+        addPlacement(dragSource.itemId, roadmap.id, col, insertIdx);
       }
     });
 
@@ -370,46 +380,103 @@ function createItemChip(placement) {
     }
   }
 
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'cell-item-remove';
+  removeBtn.textContent = '×';
+  removeBtn.title = '削除';
+  removeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    removePlacement(placement.instanceId);
+  });
+  chip.appendChild(removeBtn);
+
   chip.draggable = true;
   chip.addEventListener('dragstart', e => {
+    dragDropHandled = false;
     dragSource = { type: 'cell', instanceId: placement.instanceId };
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', placement.itemId);
     chip.classList.add('dragging');
     e.stopPropagation();
   });
-  chip.addEventListener('dragend', () => { dragSource = null; chip.classList.remove('dragging'); });
-  chip.addEventListener('click', () => removePlacement(placement.instanceId));
+  chip.addEventListener('dragend', () => {
+    const handled = dragDropHandled;
+    dragDropHandled = false;
+    dragSource = null;
+    chip.classList.remove('dragging');
+    if (!handled) removePlacement(placement.instanceId);
+  });
   return chip;
 }
 
 // ============================================================
 // State mutations
 // ============================================================
-function addPlacement(itemId, roadmapId, col) {
+
+// カーソル Y 座標から、そのセル内での挿入位置（何番目の前に入れるか）を返す
+function getInsertionIndex(cell, clientY) {
+  const chips = [...cell.querySelectorAll('.cell-item:not(.dragging)')];
+  for (let i = 0; i < chips.length; i++) {
+    const rect = chips[i].getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) return i;
+  }
+  return chips.length;
+}
+
+// roadmap.placements 配列内で「col 列の posInCol 番目」に対応するスプライス位置を返す
+function getColSpliceIndex(roadmap, col, posInCol) {
+  let count = 0;
+  for (let i = 0; i < roadmap.placements.length; i++) {
+    if (roadmap.placements[i].col === col) {
+      if (count === posInCol) return i;
+      count++;
+    }
+  }
+  return roadmap.placements.length;
+}
+
+function addPlacement(itemId, roadmapId, col, insertIdx) {
   if (!getItemById(itemId)) return;
   const roadmap = state.roadmaps.find(r => r.id === roadmapId);
   if (!roadmap) return;
   const placement = { instanceId: uid(), itemId, col };
-  roadmap.placements.push(placement);
+  if (insertIdx != null) {
+    roadmap.placements.splice(getColSpliceIndex(roadmap, col, insertIdx), 0, placement);
+  } else {
+    roadmap.placements.push(placement);
+  }
   saveState();
   const cell = document.querySelector(`.grid-cell[data-roadmap-id="${roadmapId}"][data-col="${col}"]`);
-  if (cell) cell.appendChild(createItemChip(placement));
+  if (cell) {
+    const chip = createItemChip(placement);
+    const chips = [...cell.querySelectorAll('.cell-item')];
+    insertIdx != null && insertIdx < chips.length
+      ? cell.insertBefore(chip, chips[insertIdx])
+      : cell.appendChild(chip);
+  }
 }
 
-function movePlacement(instanceId, newRoadmapId, newCol) {
+function movePlacement(instanceId, newRoadmapId, newCol, insertIdx) {
+  let sourcePlacement = null;
   for (const roadmap of state.roadmaps) {
     const idx = roadmap.placements.findIndex(p => p.instanceId === instanceId);
     if (idx === -1) continue;
-    const [pl] = roadmap.placements.splice(idx, 1);
-    pl.col = newCol;
-    const target = state.roadmaps.find(r => r.id === newRoadmapId);
-    if (target) target.placements.push(pl);
-    saveState();
-    const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
-    const newCell = document.querySelector(`.grid-cell[data-roadmap-id="${newRoadmapId}"][data-col="${newCol}"]`);
-    if (chip && newCell) newCell.appendChild(chip);
-    return;
+    [sourcePlacement] = roadmap.placements.splice(idx, 1);
+    break;
+  }
+  if (!sourcePlacement) return;
+  sourcePlacement.col = newCol;
+  const target = state.roadmaps.find(r => r.id === newRoadmapId);
+  if (!target) return;
+  target.placements.splice(getColSpliceIndex(target, newCol, insertIdx ?? Infinity), 0, sourcePlacement);
+  saveState();
+  const chip = document.querySelector(`.cell-item[data-instance-id="${instanceId}"]`);
+  const newCell = document.querySelector(`.grid-cell[data-roadmap-id="${newRoadmapId}"][data-col="${newCol}"]`);
+  if (chip && newCell) {
+    const chips = [...newCell.querySelectorAll('.cell-item:not(.dragging)')];
+    insertIdx != null && insertIdx < chips.length
+      ? newCell.insertBefore(chip, chips[insertIdx])
+      : newCell.appendChild(chip);
   }
 }
 
