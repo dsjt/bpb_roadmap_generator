@@ -27,14 +27,31 @@
     <aside class="palette-panel">
       <div class="palette-top">
         <input id="palette-search" type="text" placeholder="アイテムを検索…" autocomplete="off">
-        <div id="rarity-filter" class="rarity-filter">
-          <button class="rarity-btn active" data-rarity="">全て</button>
-          <button class="rarity-btn" data-rarity="common">コモン</button>
-          <button class="rarity-btn" data-rarity="rare">レア</button>
-          <button class="rarity-btn" data-rarity="epic">エピック</button>
-          <button class="rarity-btn" data-rarity="legendary">レジェンダリ</button>
-          <button class="rarity-btn" data-rarity="god">ゴッド</button>
-          <button class="rarity-btn" data-rarity="unique">ユニーク</button>
+        <div class="filter-section">
+          <div class="filter-label" data-target="rarity-filter">レアリティ</div>
+          <div id="rarity-filter" class="filter-btns">
+            <button class="rarity-btn active" data-rarity="">全て</button>
+            <button class="rarity-btn" data-rarity="common">コモン</button>
+            <button class="rarity-btn" data-rarity="rare">レア</button>
+            <button class="rarity-btn" data-rarity="epic">エピック</button>
+            <button class="rarity-btn" data-rarity="legendary">レジェンダリ</button>
+            <button class="rarity-btn" data-rarity="god">ゴッド</button>
+            <button class="rarity-btn" data-rarity="unique">ユニーク</button>
+          </div>
+        </div>
+        <div class="filter-section">
+          <div class="filter-label" data-target="class-filter">クラス</div>
+          <div id="class-filter" class="filter-btns">
+            <button class="class-btn active" data-class="">全て</button>
+            <button class="class-btn" data-class="common">共通</button>
+            <button class="class-btn" data-class="ranger">レンジャー</button>
+            <button class="class-btn" data-class="reaper">リーパー</button>
+            <button class="class-btn" data-class="pyromancer">パイロ</button>
+            <button class="class-btn" data-class="berserker">バーサーカー</button>
+            <button class="class-btn" data-class="mage">メイジ</button>
+            <button class="class-btn" data-class="adventurer">アドベン</button>
+            <button class="class-btn" data-class="engineer">エンジニア</button>
+          </div>
         </div>
         <div class="palette-btns">
           <button id="btn-add-custom" class="btn btn-sm">＋ カスタム</button>

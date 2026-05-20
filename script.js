@@ -153,6 +153,8 @@ let dragDropHandled = false; // セルへのドロップが成立したかどう
 let searchQuery = '';
 const rarityFilters = new Set(); // 空 = フィルターなし（全て表示）
 const ALL_RARITIES = ['common', 'rare', 'epic', 'legendary', 'god', 'unique'];
+const classFilters = new Set(); // 空 = フィルターなし（全て表示）
+const ALL_CLASSES = ['ranger', 'reaper', 'pyromancer', 'berserker', 'mage', 'adventurer', 'engineer'];
 
 function updateRarityBtns() {
   document.querySelectorAll('.rarity-btn').forEach(btn => {
@@ -161,12 +163,32 @@ function updateRarityBtns() {
   });
 }
 
+function updateClassBtns() {
+  document.querySelectorAll('.class-btn').forEach(btn => {
+    const c = btn.dataset.class;
+    btn.classList.toggle('active', c === '' ? classFilters.size === 0 : classFilters.has(c));
+  });
+}
+
+function matchesClassFilter(item) {
+  if (classFilters.size === 0) return true;
+  for (const cf of classFilters) {
+    if (cf === 'common') {
+      if (Array.isArray(item.classes) && item.classes.length === 0) return true;
+    } else {
+      if (Array.isArray(item.classes) && item.classes.includes(cf)) return true;
+    }
+  }
+  return false;
+}
+
 function renderPalette() {
   const list = document.getElementById('palette-list');
   const q = searchQuery.trim();
   const items = getAllItems().filter(item => {
     if (q !== '' && !item.name.includes(q)) return false;
     if (rarityFilters.size > 0 && !rarityFilters.has(item.rarity)) return false;
+    if (!matchesClassFilter(item)) return false;
     return true;
   });
 
@@ -227,6 +249,7 @@ function renderPalette() {
     list.appendChild(li);
   });
   updateRarityBtns();
+  updateClassBtns();
 }
 
 // ============================================================
@@ -923,6 +946,15 @@ function init() {
   renderGrid();
   renderPalette();
 
+  // Filter section collapse
+  document.querySelectorAll('.filter-label[data-target]').forEach(label => {
+    label.addEventListener('click', () => {
+      const target = document.getElementById(label.dataset.target);
+      label.classList.toggle('collapsed');
+      target.classList.toggle('collapsed');
+    });
+  });
+
   // Search
   document.getElementById('palette-search').addEventListener('input', e => {
     searchQuery = e.target.value;
@@ -958,6 +990,38 @@ function init() {
       rarityFilters.add(r);
     }
     updateRarityBtns();
+    renderPalette();
+  });
+
+  // クラスフィルター – 左クリックで個別トグル
+  document.getElementById('class-filter').addEventListener('click', e => {
+    const btn = e.target.closest('.class-btn');
+    if (!btn) return;
+    const c = btn.dataset.class;
+    if (c === '') {
+      classFilters.clear();
+    } else {
+      if (classFilters.has(c)) classFilters.delete(c);
+      else classFilters.add(c);
+    }
+    updateClassBtns();
+    renderPalette();
+  });
+
+  // 右クリック: 「このクラスのみ」⇔「このクラス以外全て」
+  document.getElementById('class-filter').addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const btn = e.target.closest('.class-btn');
+    if (!btn || btn.dataset.class === '') return;
+    const c = btn.dataset.class;
+    const isOnlyThis = classFilters.size === 1 && classFilters.has(c);
+    classFilters.clear();
+    if (isOnlyThis) {
+      ALL_CLASSES.forEach(cl => { if (cl !== c) classFilters.add(cl); });
+    } else {
+      classFilters.add(c);
+    }
+    updateClassBtns();
     renderPalette();
   });
 
